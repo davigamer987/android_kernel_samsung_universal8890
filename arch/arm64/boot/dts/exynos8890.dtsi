@@ -123,6 +123,14 @@
 			compatible = "android,firmware";
 			fstab {
 				compatible = "android,fstab";
+				vendor {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/155a0000.ufs/by-name/VENDOR";
+					type = "ext4";
+					mnt_flags = "ro,errors=panic,noload";
+					fsmgr_flags = "wait";
+					status = "ok";
+				};
 				system {
 					compatible = "android,system";
 					dev = "/dev/block/platform/155a0000.ufs/by-name/SYSTEM";
@@ -131,14 +139,14 @@
 					fsmgr_flags = "wait";
 					status = "ok";
 				};
-                                efs {
-                                        compatible = "android,efs";
-                                        dev = "/dev/block/platform/155a0000.ufs/by-name/EFS";
-                                        type = "ext4";
-                                        mnt_flags = "noatime,nosuid,nodev,noauto_da_alloc,discard,journal_async_commit,data=ordered,no_sehash_xattr,errors=panic";
-                                        fsmgr_flags = "wait,check";
-                                        status = "ok";
-                                }; 
+				efs {
+					compatible = "android,efs";
+					dev = "/dev/block/platform/155a0000.ufs/by-name/EFS";
+					type = "ext4";
+					mnt_flags = "noatime,nosuid,nodev,noauto_da_alloc,discard,journal_async_commit,data=ordered,no_sehash_xattr,errors=panic";
+					fsmgr_flags = "wait,check";
+					status = "ok";
+				}; 
 			};
 		};
 	};

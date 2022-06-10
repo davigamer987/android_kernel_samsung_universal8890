@@ -126,7 +126,7 @@
 				vendor {
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/155a0000.ufs/by-name/VENDOR";
-					type = "ext4";
+					type = "squashfs";
 					mnt_flags = "ro,errors=panic,noload";
 					fsmgr_flags = "wait";
 					status = "ok";

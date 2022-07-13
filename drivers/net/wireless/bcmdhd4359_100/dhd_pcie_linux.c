@@ -1631,11 +1631,16 @@ int dhdpcie_init(struct pci_dev *pdev)
 			}
 		} else {
 			/* Set ramdom MAC address during boot time */
-			get_random_bytes(&bus->dhd->mac.octet[3], 3);
+			// get_random_bytes(&bus->dhd->mac.octet[3], 3);
 			/* Adding BRCM OUI */
 			bus->dhd->mac.octet[0] = 0;
 			bus->dhd->mac.octet[1] = 0x90;
 			bus->dhd->mac.octet[2] = 0x4C;
+			/* random mac addresses confuses network manager, do not do that */
+			/* mac address is set from /efs anyway later */
+			bus->dhd->mac.octet[3] = 0x01;
+			bus->dhd->mac.octet[4] = 0x02;
+			bus->dhd->mac.octet[5] = 0x03;
 		}
 
 		/* Attach to the OS network interface */

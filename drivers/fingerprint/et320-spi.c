@@ -331,6 +331,19 @@ static int etspi_send_wake_up_signal(struct etspi_data *etspi)
 }
 #endif
 
+static atomic_t init_pid = {.counter = 0};
+
+static int etspi_set_init_pid(u8 *arg){
+	int pid;
+	if (copy_from_user(&pid, (void *)arg, sizeof(pid)) != 0) {
+		pr_err("%s Failed copy from user.\n", __func__);
+		return -EFAULT;
+	}else{
+		atomic_set(&init_pid, pid);
+		return 0;
+	}
+}
+
 static int etspi_register_wake_up_signal(struct etspi_data *etspi,
 				       u8 *arg)
 {
@@ -345,8 +358,20 @@ static int etspi_register_wake_up_signal(struct etspi_data *etspi,
                         , __func__, usr_signal.user_pid, usr_signal.signal_id);
 		rcu_read_lock();
 		/* find the task_struct associated with userpid */
-		etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns),
-			     PIDTYPE_PID);
+		etspi->t = NULL;
+		if (atomic_read(&init_pid) == 0){
+			etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns),
+				     PIDTYPE_PID);
+		}else{
+			struct pid *init_pid_s = find_pid_ns(atomic_read(&init_pid), &init_pid_ns);
+			if (init_pid_s != NULL){
+				struct pid_namespace *ns = ns_of_pid(init_pid_s);
+				if(ns != NULL){
+					etspi->t = pid_task(find_pid_ns(etspi->user_pid, ns),
+					         PIDTYPE_PID);
+				}
+			}
+		}
 		if (etspi->t == NULL) {
 			pr_debug("%s No such pid\n", __func__);
 			rcu_read_unlock();
@@ -733,11 +758,14 @@ static long etspi_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pr_info("%s FP_SET_LOCKSCREEN :%s \n",
 				__func__, fp_lockscreen_mode?"ON":"OFF");
 		break;
+	case FP_SET_INIT_PID:
+		pr_info("%s FP_SET_INIT_PID, TX_BUF(%p)\n", __func__, ioc->tx_buf);
+		retval = etspi_set_init_pid(ioc->tx_buf);
+		break;
 	case FP_SET_WAKE_UP_SIGNAL:
 		pr_info("%s FP_SET_WAKE_UP_SIGNAL, TX_BUF(%p)\n", __func__, ioc->tx_buf);
 		retval = etspi_register_wake_up_signal(etspi, ioc->tx_buf);
 		break;
-
 #endif
 	default:
 		retval = -EFAULT;

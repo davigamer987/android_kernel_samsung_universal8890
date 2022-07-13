@@ -778,6 +778,19 @@ static int vfsspi_ioctl_disable_spi_clock(
 }
 #endif
 
+static atomic_t init_pid = {.counter = 0};
+
+static int vfsspi_set_init_pid(unsigned long arg){
+	int pid;
+	if (copy_from_user(&pid, (void *)arg, sizeof(pid)) != 0) {
+		pr_err("%s Failed copy from user.\n", __func__);
+		return -EFAULT;
+	}else{
+		atomic_set(&init_pid, pid);
+		return 0;
+	}
+}
+
 static int vfsspi_register_drdy_signal(struct vfsspi_device_data *vfsspi_device,
 				       unsigned long arg)
 {
@@ -790,8 +803,20 @@ static int vfsspi_register_drdy_signal(struct vfsspi_device_data *vfsspi_device,
 		vfsspi_device->signal_id = usr_signal.signal_id;
 		rcu_read_lock();
 		/* find the task_struct associated with userpid */
-		vfsspi_device->t = pid_task(find_pid_ns(vfsspi_device->user_pid, &init_pid_ns),
-			     PIDTYPE_PID);
+		vfsspi_device->t = NULL;
+		if (atomic_read(&init_pid) == 0){
+			vfsspi_device->t = pid_task(find_pid_ns(vfsspi_device->user_pid, &init_pid_ns),
+				     PIDTYPE_PID);
+		}else{
+			struct pid *init_pid_s = find_pid_ns(atomic_read(&init_pid), &init_pid_ns);
+			if (init_pid_s != NULL){
+				struct pid_namespace *ns = ns_of_pid(init_pid_s);
+				if(ns != NULL){
+					vfsspi_device->t = pid_task(find_pid_ns(vfsspi_device->user_pid, ns),
+						     PIDTYPE_PID);
+				}
+			}
+		}
 		if (vfsspi_device->t == NULL) {
 			pr_debug("%s No such pid\n", __func__);
 			rcu_read_unlock();
@@ -1041,6 +1066,10 @@ static long vfsspi_ioctl(struct file *filp, unsigned int cmd,
 	case VFSSPI_IOCTL_SET_CLK:
 		pr_info("%s VFSSPI_IOCTL_SET_CLK\n", __func__);
 		ret_val = vfsspi_set_clk(vfsspi_device, arg);
+		break;
+	case VFSSPI_IOCTL_SET_INIT_PID:
+		pr_info("%s VFSSPI_IOCTL_SET_INIT_PID\n", __func__);
+		ret_val = vfsspi_set_init_pid(arg);
 		break;
 	case VFSSPI_IOCTL_REGISTER_DRDY_SIGNAL:
 		pr_info("%s VFSSPI_IOCTL_REGISTER_DRDY_SIGNAL\n", __func__);

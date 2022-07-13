@@ -145,6 +145,10 @@
 #define VFSSPI_IOCTL_GET_SENSOR_ORIENT	\
 	_IOR(VFSSPI_IOCTL_MAGIC, 18, unsigned int)
 
+/* for ubports, providing the lxc init pid */
+#define VFSSPI_IOCTL_SET_INIT_PID     _IOW(VFSSPI_IOCTL_MAGIC,	\
+							24, unsigned int)
+
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
 /*
  * Used by IOCTL command:

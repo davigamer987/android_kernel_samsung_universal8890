@@ -22,10 +22,12 @@
 #include <linux/mfd/s2mpb02-private.h>
 #include <linux/leds-s2mpb02.h>
 #include <linux/ctype.h>
+#include <linux/string.h>
 
 extern struct class *camera_class; /*sys/class/camera*/
 struct device *camera_flash_dev;
 struct s2mpb02_led_data *global_led_datas[S2MPB02_LED_MAX];
+const char* const qcom_spoof_name = "torch-light";
 
 struct s2mpb02_led_data {
 	struct led_classdev led;
@@ -89,24 +91,6 @@ static int s2mpb02_led_get_en_value(struct s2mpb02_led_data *led_data, int on)
 		return (S2MPB02_FLED_DISABLE << S2MPB02_FLED_ENABLE_SHIFT);
 				/* controlled by GPIO */
 	}
-}
-
-static void s2mpb02_led_set(struct led_classdev *led_cdev,
-						enum led_brightness value)
-{
-#if 0 /* disable LED control by other sysfs */
-	unsigned long flags;
-	struct s2mpb02_led_data *led_data
-		= container_of(led_cdev, struct s2mpb02_led_data, led);
-
-	pr_debug("[LED] %s\n", __func__);
-
-	spin_lock_irqsave(&led_data->value_lock, flags);
-	led_data->data->brightness = min((int)value, S2MPB02_FLASH_TORCH_CURRENT_MAX);
-	spin_unlock_irqrestore(&led_data->value_lock, flags);
-
-	schedule_work(&led_data->work);
-#endif
 }
 
 static void led_set(struct s2mpb02_led_data *led_data)
@@ -175,6 +159,71 @@ error_set_bits:
 	return;
 }
 
+static int s2mpb02_torch_control(int value){
+	if(global_led_datas[S2MPB02_TORCH_LED_1] == NULL) {
+		pr_err("<%s> global_led_datas[S2MPB02_TORCH_LED_1] is NULL\n", __func__);
+		return -1;
+	}
+
+	mutex_lock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
+
+	if (value == 0) {
+		/* Turn off Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (value == 1) {
+		/* Turn on Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness
+			= global_led_datas[S2MPB02_TORCH_LED_1]->data->torch_current_value;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (value == 100) {
+		/* Factory mode Turn on Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness
+			= global_led_datas[S2MPB02_TORCH_LED_1]->data->factory_torch_current_value;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (1001 <= value && value <= 1010) {
+		/* Turn on Torch Step 20mA ~ 200mA */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = value - 1000;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else {
+		pr_info("[LED]%s , Invalid value:%d\n", __func__, value);
+	}
+
+	pr_info("[LED]%s , value:%d, current:%d\n",
+			__func__, value, global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness);
+
+	if (value <= 0) {
+		s2mpb02_set_bits(global_led_datas[S2MPB02_TORCH_LED_1]->i2c, S2MPB02_REG_FLED_CUR1,
+				leds_mask[global_led_datas[S2MPB02_TORCH_LED_1]->data->id],
+				original_brightness[S2MPB02_TORCH_LED_1] << leds_shift[global_led_datas[S2MPB02_TORCH_LED_1]->data->id]);
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = original_brightness[S2MPB02_TORCH_LED_1];
+	}
+
+	mutex_unlock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
+	return 0;
+}
+
+static void s2mpb02_led_set(struct led_classdev *led_cdev,
+						enum led_brightness value)
+{
+#if 1 /* spoof qcom torch for https://github.com/AyatanaIndicators/ayatana-indicator-power */
+	struct s2mpb02_led_data *led_data
+		= container_of(led_cdev, struct s2mpb02_led_data, led);
+
+	pr_debug("[LED] %s\n", __func__);
+
+	if(global_led_datas[S2MPB02_TORCH_LED_1] != led_data){
+		return;
+	}
+
+	if(value == 0)
+		s2mpb02_torch_control(0);
+	else
+		s2mpb02_torch_control(1);
+#endif
+}
+
+# if 0
 static void s2mpb02_led_work(struct work_struct *work)
 {
 	struct s2mpb02_led_data *led_data
@@ -186,6 +235,7 @@ static void s2mpb02_led_work(struct work_struct *work)
 	led_set(led_data);
 	mutex_unlock(&led_data->lock);
 }
+# endif
 
 static int s2mpb02_led_setup(struct s2mpb02_led_data *led_data)
 {
@@ -298,52 +348,16 @@ ssize_t s2mpb02_store(struct device *dev,
 			struct device_attribute *attr, const char *buf,
 			size_t count)
 {
-	int value = 0;
+	int value,ret = 0;
 
 	if ((buf == NULL) || kstrtouint(buf, 10, &value)) {
 		return -1;
 	}
 
-	if(global_led_datas[S2MPB02_TORCH_LED_1] == NULL) {
-		pr_err("<%s> global_led_datas[S2MPB02_TORCH_LED_1] is NULL\n", __func__);
-		return -1;
+	ret = s2mpb02_torch_control(value);
+	if(ret != 0){
+		return ret;
 	}
-
-	mutex_lock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
-
-	if (value == 0) {
-		/* Turn off Torch */
-		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
-		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-	} else if (value == 1) {
-		/* Turn on Torch */
-		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness
-			= global_led_datas[S2MPB02_TORCH_LED_1]->data->torch_current_value;
-		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-	} else if (value == 100) {
-		/* Factory mode Turn on Torch */
-		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness
-			= global_led_datas[S2MPB02_TORCH_LED_1]->data->factory_torch_current_value;
-		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-	} else if (1001 <= value && value <= 1010) {
-		/* Turn on Torch Step 20mA ~ 200mA */
-		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = value - 1000;
-		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-	} else {
-		pr_info("[LED]%s , Invalid value:%d\n", __func__, value);
-	}
-
-	pr_info("[LED]%s , value:%d, current:%d\n",
-			__func__, value, global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness);
-
-	if (value <= 0) {
-		s2mpb02_set_bits(global_led_datas[S2MPB02_TORCH_LED_1]->i2c, S2MPB02_REG_FLED_CUR1,
-				leds_mask[global_led_datas[S2MPB02_TORCH_LED_1]->data->id],
-				original_brightness[S2MPB02_TORCH_LED_1] << leds_shift[global_led_datas[S2MPB02_TORCH_LED_1]->data->id]);
-		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = original_brightness[S2MPB02_TORCH_LED_1];
-	}
-
-	mutex_unlock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
 	return count;
 }
 
@@ -776,7 +790,11 @@ static int s2mpb02_led_probe(struct platform_device *pdev)
 		led_data->s2mpb02 = s2mpb02;
 		led_data->i2c = s2mpb02->i2c;
 		led_data->data = data;
-		led_data->led.name = data->name;
+		if(strcmp(data->name, "torch-sec1") == 0)
+			/* spoof qcom torch for https://github.com/AyatanaIndicators/ayatana-indicator-power */
+			led_data->led.name = qcom_spoof_name;
+		else
+			led_data->led.name = data->name;
 		led_data->led.brightness_set = s2mpb02_led_set;
 		led_data->led.brightness = LED_OFF;
 		led_data->brightness = data->brightness;
@@ -785,7 +803,9 @@ static int s2mpb02_led_probe(struct platform_device *pdev)
 
 		mutex_init(&led_data->lock);
 		spin_lock_init(&led_data->value_lock);
+#if 0
 		INIT_WORK(&led_data->work, s2mpb02_led_work);
+#endif
 
 		ret = led_classdev_register(&pdev->dev, &led_data->led);
 		if (unlikely(ret)) {

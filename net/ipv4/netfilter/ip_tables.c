@@ -1719,7 +1719,11 @@ static int
 compat_do_ipt_set_ctl(struct sock *sk,	int cmd, void __user *user,
 		      unsigned int len)
 {
+	pr_warn("compat_do_ipt_set_ctl disabled for until the reason of page fault is found, only used by armhf anbox\n");
+	return 0;
+#if 0
 	int ret;
+
 
 	if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN))
 		return -EPERM;
@@ -1739,6 +1743,7 @@ compat_do_ipt_set_ctl(struct sock *sk,	int cmd, void __user *user,
 	}
 
 	return ret;
+#endif
 }
 
 struct compat_ipt_get_entries {

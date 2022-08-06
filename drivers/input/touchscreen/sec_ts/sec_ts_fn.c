@@ -65,6 +65,14 @@ struct ft_cmd {
 
 static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count);
+static ssize_t cmd_store_ut_aod_enable(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count);
+static ssize_t cmd_show_ut_aod_enable(struct device *dev,
+		struct device_attribute *attr, char *buf);
+static ssize_t cmd_store_ut_set_aod_rect(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count);
+static ssize_t cmd_show_ut_set_aod_rect(struct device *dev,
+		struct device_attribute *attr, char *buf);
 static ssize_t cmd_status_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 static ssize_t cmd_result_show(struct device *dev,
@@ -76,8 +84,11 @@ static ssize_t scrub_position_show(struct device *dev,
 static ssize_t edge_x_position(struct device *dev,
 		struct device_attribute *attr, char *buf);
 
+
 static DEVICE_ATTR(cmd, S_IWUSR | S_IWGRP, NULL, cmd_store);
 static DEVICE_ATTR(cmd2, S_IWUSR | S_IWGRP, NULL, cmd_store);
+static DEVICE_ATTR(cmd_ut_aod_enable, S_IWUSR | S_IWGRP | S_IRUGO, cmd_show_ut_aod_enable, cmd_store_ut_aod_enable);
+static DEVICE_ATTR(cmd_ut_set_aod_rect, S_IWUSR | S_IWGRP | S_IRUGO, cmd_show_ut_set_aod_rect, cmd_store_ut_set_aod_rect);
 static DEVICE_ATTR(cmd_status, S_IRUGO, cmd_status_show, NULL);
 static DEVICE_ATTR(cmd_result, S_IRUGO, cmd_result_show, NULL);
 static DEVICE_ATTR(cmd_list, S_IRUGO, cmd_list_show, NULL);
@@ -366,7 +377,9 @@ static DEVICE_ATTR(module_id, S_IRUGO, read_module_id_show, NULL);
 
 static struct attribute *cmd_attributes[] = {
 	&dev_attr_cmd.attr,
-        &dev_attr_cmd2.attr,
+	&dev_attr_cmd2.attr,
+	&dev_attr_cmd_ut_aod_enable.attr,
+	&dev_attr_cmd_ut_set_aod_rect.attr,
 	&dev_attr_cmd_status.attr,
 	&dev_attr_cmd_list.attr,
 	&dev_attr_cmd_result.attr,
@@ -493,6 +506,99 @@ static void set_wirelesscharger_mode_work(struct work_struct *work)
 		strcpy(ts->cmd, "set_wirelesscharger_mode");
 		set_wirelesscharger_mode(ts);
 	}
+}
+
+static ssize_t cmd_store_ut_aod_enable(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	const char command[] = "aod_enable,";
+	char buffer[sizeof(command) + 1];
+	ssize_t ret;
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	if(count < 1){
+		input_err(true, &ts->client->dev, "%s %s: aod_enable takes either 1 or 0, input is too short\n",
+				SECLOG, __func__);
+		return -EINVAL;
+	}
+	if(buf[0] != '1' && buf[0] != '0'){
+		input_err(true, &ts->client->dev, "%s %s: aod_enable takes either 1 or 0\n",
+				SECLOG, __func__);
+		return -EINVAL;
+	}
+	strcpy(buffer, command);
+	buffer[sizeof(buffer) - 2] = buf[0];
+	buffer[sizeof(buffer) - 1] = '\0';
+	ret = cmd_store(dev, attr, buffer, sizeof(buffer));
+	if(ret < 0){
+		return ret;
+	}
+	return count;
+}
+
+static ssize_t cmd_show_ut_aod_enable(struct device *dev,
+	struct device_attribute *attr, char *buf){
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	return sprintf(buf, "%d", ts->lowpower_flag == 0 ? 0 : 1);
+}
+
+static ssize_t _cmd_store_ut_set_aod_rect(struct device *dev, struct device_attribute *attr,
+	const char *buf, const char *divider_pos, const char *command, const char *postfix, int width_len, int height_len, int full_len){
+	char buffer[full_len];
+	sprintf(buffer, "%s%.*s,%.*s%s", command, width_len, buf, height_len, divider_pos + 1, postfix);
+#if 0
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	input_err(true, &ts->client->dev, "%s: command for cmd_store: %s\n", __func__, buffer);
+#endif
+	return cmd_store(dev, attr, buffer, full_len);
+}
+
+static ssize_t cmd_store_ut_set_aod_rect(struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count){
+	const char command[] = "set_aod_rect,";
+	const char postfix[] = ",0,0";
+	char* divider_pos;
+	int width_len, height_len, full_len;
+	ssize_t ret;
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+#if 0
+	input_err(true, &ts->client->dev, "%s: input: %s\n", __func__, buf);
+#endif
+	if (strlen(buf) >= CMD_STR_LEN) {
+		input_err(true, &ts->client->dev, "%s: cmd length(strlen(buf)) is over (%d,%s)!!\n",
+					__func__, (unsigned int)strlen(buf), buf);
+		return -EINVAL;
+	}
+
+	if (count >= (unsigned int)CMD_STR_LEN) {
+		input_err(true, &ts->client->dev, "%s %s: cmd length(count) is over (%d,%s)!!\n",
+				SECLOG, __func__, (unsigned int)count, buf);
+		return -EINVAL;
+	}
+	divider_pos = strchr(buf, 'x');
+	width_len = divider_pos - buf;
+	height_len = &(buf[strlen(buf) - 1]) - divider_pos;
+	if(divider_pos == NULL || width_len == 0 || height_len == 0){
+		input_err(true, &ts->client->dev, "%s %s: set_aod_rect expects <number>x<number> input\n",
+				SECLOG, __func__);
+		return -EINVAL;
+	}
+	full_len = strlen(command) + width_len + 1 + height_len + strlen(postfix) + 1;
+	if (full_len >= (unsigned int)CMD_STR_LEN) {
+		input_err(true, &ts->client->dev, "%s %s: cmd length(full_len) is over (%d)!!\n",
+				SECLOG, __func__, full_len);
+		return -EINVAL;
+	}
+	ret = _cmd_store_ut_set_aod_rect(dev, attr, buf, divider_pos, command, postfix, width_len, height_len, full_len);
+	if(ret < 0){
+		return ret;
+	}
+	return count;
+}
+
+static ssize_t cmd_show_ut_set_aod_rect(struct device *dev,
+	struct device_attribute *attr, char *buf){
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	return sprintf(buf, "%dx%d", ts->aod_width, ts->aod_height);
 }
 
 static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
@@ -3751,9 +3857,13 @@ static void set_aod_rect(void *device_data)
 	ts->cmd_state = CMD_STATUS_OK;
 	set_cmd_result(ts, buff, strnlen(buff, sizeof(buff)));
 
+	ts->aod_width = ts->cmd_param[0];
+	ts->aod_height = ts->cmd_param[1];
+
 	mutex_lock(&ts->cmd_lock);
 	ts->cmd_is_running = false;
 	mutex_unlock(&ts->cmd_lock);
+
 	return;
 NG:
 	enable_irq(ts->client->irq);

@@ -2712,6 +2712,8 @@ static int binder_fixup_parent(struct binder_transaction *t,
 	return 0;
 }
 
+static atomic_t ofono_async_buffer_cnt = {.counter = 0};
+
 /**
  * binder_proc_transaction() - sends a transaction to a process and wakes it up
  * @t:		transaction to send
@@ -2746,10 +2748,32 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 
 	if (oneway) {
 		BUG_ON(thread);
+		struct task_struct *current_task = proc->tsk;
+		bool is_ofonod = false;
+		if(current_task != NULL && strcmp(current_task->comm, "ofonod") == 0){
+			is_ofonod = true;
+			atomic_inc(&ofono_async_buffer_cnt);
+		}
 		if (node->has_async_transaction) {
-			target_list = &node->async_todo;
-			wakeup = false;
+			/*
+			if(current_task != NULL){
+				pr_info("%s:%d has a pending async transaction while adding another transaction\n",
+					current_task->comm, proc->pid);
+			}else{
+				pr_info("(process not found):%d has a pending async transaction while adding another transaction\n",
+					proc->pid);
+			}
+			*/
+			if(is_ofonod){
+				pr_info("hack: processing ofonod async transaction instead of queuing it for until BC_FREE_BUFFER, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+			}else{
+				target_list = &node->async_todo;
+				wakeup = false;
+			}
 		} else {
+			if(is_ofonod){
+				pr_info("hack: ofonod begins async transcation, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+			}
 			node->has_async_transaction = 1;
 		}
 	}
@@ -3651,7 +3675,23 @@ static int binder_thread_write(struct binder_proc *proc,
 
 				buf_node = buffer->target_node;
 				binder_node_inner_lock(buf_node);
-				BUG_ON(!buf_node->has_async_transaction);
+				// ofono/gbinder workaround
+				struct task_struct *current_task = proc->tsk;
+				/*
+				if(current_task != NULL){
+					pr_info("processing BC_FREE_BUFFER from %s\n", current_task->comm);
+				}
+				*/
+				if(current_task != NULL && strcmp(current_task->comm, "ofonod") == 0){
+					atomic_dec(&ofono_async_buffer_cnt);
+					if(!buf_node->has_async_transaction){
+						pr_info("hack: let ofonod get away with BC_FREE_BUFFER without pending async transaction, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+					}else{
+						pr_info("hack: ofonod BC_FREE_BUFFER with pending async transaction, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+					}
+				}else{
+					BUG_ON(!buf_node->has_async_transaction);
+				}
 				BUG_ON(buf_node->proc != proc);
 				w = binder_dequeue_work_head_ilocked(
 						&buf_node->async_todo);

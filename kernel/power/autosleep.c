@@ -49,6 +49,13 @@ static void try_to_suspend(struct work_struct *work)
 
 	mutex_unlock(&autosleep_lock);
 
+	// XXX reduce the aggressiveness of autosleep
+	// autosleep seems to sleep a lot more aggressively than android power management
+	// a few hangups were observed on ut/repowerd:
+	// exynos-ufs resume would semi-frequently timeout, then reset(re-probe) would cause a hang
+	// it seems that other hangs are also possible post resume, but not as frequent as exynos-ufs combined and are still under investigation
+	schedule_timeout_uninterruptible(HZ);
+
 	if (!pm_get_wakeup_count(&final_count, false))
 		goto out;
 

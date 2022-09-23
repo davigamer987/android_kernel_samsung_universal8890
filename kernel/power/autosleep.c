@@ -23,6 +23,39 @@ static struct workqueue_struct *autosleep_wq;
 static DEFINE_MUTEX(autosleep_lock);
 static struct wakeup_source *autosleep_ws;
 
+#define AUTOSLEEP_DELAY_DEFAULT 2
+#define AUTOSLEEP_DELAY_MAX 30
+#define AUTOSLEEP_DELAY_MIN AUTOSLEEP_DELAY_DEFAULT
+static int autosleep_delay = AUTOSLEEP_DELAY_DEFAULT;
+
+int pm_autosleep_delay(void){
+	return autosleep_delay;
+}
+
+static bool is_valid_autosleep_delay(int value){
+	if(((int)value) < AUTOSLEEP_DELAY_MIN || ((int)value) > AUTOSLEEP_DELAY_MAX){
+		return false;
+	}
+	return true;
+}
+
+int pm_autosleep_delay_set(int delay){
+	if(!is_valid_autosleep_delay(delay)){
+		return -EINVAL;
+	}
+	autosleep_delay = delay;
+	return 0;
+}
+
+static int get_autosleep_delay(void){
+	// in case of race condition
+	int autosleep_delay_copy = autosleep_delay;
+	if(!is_valid_autosleep_delay(autosleep_delay_copy)){
+		return HZ * AUTOSLEEP_DELAY_DEFAULT;
+	}
+	return HZ * autosleep_delay_copy;
+}
+
 static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
@@ -54,7 +87,7 @@ static void try_to_suspend(struct work_struct *work)
 	// a few hangups were observed on ut/repowerd:
 	// exynos-ufs resume would semi-frequently timeout, then reset(re-probe) would cause a hang
 	// it seems that other hangs are also possible post resume, but not as frequent as exynos-ufs combined and are still under investigation
-	schedule_timeout_uninterruptible(HZ);
+	schedule_timeout_uninterruptible(get_autosleep_delay());
 
 	if (!pm_get_wakeup_count(&final_count, false))
 		goto out;

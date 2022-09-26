@@ -99,6 +99,9 @@ endif
 	# DHD_LB_RXP - Perform RX Packet processing in parallel
 	# DHD_LB_STATS - To display the Load Blancing statistics
 	DHDCFLAGS += -DDHD_LB -DDHD_LB_RXP -DDHD_LB_TXP -DDHD_LB_STATS
+ifeq ($(CONFIG_SOC_EXYNOS8890),y)
+	DHDCFLAGS += -DWAKEUP_KSOFTIRQD_POST_NAPI_SCHEDULE
+endif
 	DHDCFLAGS += -DDHD_RECOVER_TIMEOUT
 	# HEAP ASLR
 	DHDCFLAGS += -DBCM_ASLR_HEAP
@@ -303,6 +306,7 @@ ifeq ($(CONFIG_WLAN_VHTDISABLE),y)
 DHDCFLAGS += -DDHD_DISABLE_VHTMODE
 endif
 
+DHDCFLAGS += -DANDROID_PLATFORM_VERSION=9
 # Android Version Check from Platform source
 #ifneq ($(ANDROID_VERSION),)
 #MAJOR_VERSION := $(shell echo $(ANDROID_VERSION) | rev | cut -c 5- | rev)
@@ -313,14 +317,13 @@ endif
 #DHDCFLAGS += -DANDROID_PLATFORM_VERSION=$(MAJOR_VERSION)
 #endif
 #endif
-DHDCFLAGS += -DANDROID_PLATFORM_VERSION=9
 
-ifneq ($(PLATFORM_VERSION),)
+#ifneq ($(PLATFORM_VERSION),)
 # Android O-OS (version 8) support
-ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
+#ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
 DHDCFLAGS += -DCUSTOM_ASSOC_TIMEOUT=20
-endif
-endif
+#endif
+#endif
 
 # Use Legacy dump path
 ifneq ($(USE_LEGACY_DUMP_PATH),)
@@ -328,6 +331,9 @@ ifneq ($(USE_LEGACY_DUMP_PATH),)
 else
   DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/data/log/wifi/\""
 endif
+
+# TCP SYNC flood attack block
+DHDCFLAGS += -DDHDTCPSYNC_FLOOD_BLK -DTCP_SYNC_FLOOD_LIMIT=50
 
 ##############################
 # Android Platform Definition
@@ -488,13 +494,13 @@ endif
 # Generate .softap.info
   DHDCFLAGS += -DGEN_SOFTAP_INFO_FILE
 
-ifneq ($(PLATFORM_VERSION),)
+#ifneq ($(PLATFORM_VERSION),)
 # DREAM Android N OS should not use below features
-ifeq ($(shell expr $(PLATFORM_VERSION) \< 8.0),1)
+#ifeq ($(shell expr $(PLATFORM_VERSION) \< 8.0),1)
 ifneq ($(filter y,$(CONFIG_WLAN_GREAT) $(CONFIG_SEC_GREATQLTE_PROJECT)),y)
  DREAM_NOS_DISCARD_FEATURES := y
 endif
-endif
+#endif
 
 # Feature Set used for GREAT N OS and Android O OS
 ifneq ($(DREAM_NOS_DISCARD_FEATURES),y)
@@ -520,13 +526,13 @@ ifneq ($(DREAM_NOS_DISCARD_FEATURES),y)
 endif
 
 # RSSI_SUM_REPORT is used over Android O OS only
-ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
+#ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
 # RSSI Logging
   DHDCFLAGS += -DSUPPORT_RSSI_SUM_REPORT
 # Enable NDO_CONFIG_SUPPORT in HAL
   DHDCFLAGS += -DNDO_CONFIG_SUPPORT
-endif
-endif
+#endif
+#endif
 
 # For Samsung factory mode only
 ifeq ($(CONFIG_SEC_FACTORY),y)
@@ -569,6 +575,11 @@ ifeq ($(BUS_IFACE_PCIE),y)
   DHDCFLAGS += -DDHDTCPACK_SUPPRESS
 endif
 
+ifeq ($(CONFIG_ARCH_QCOM),y)
+  DHDCFLAGS += -DCONFIG_ARCH_MSM
+  DHDCFLAGS := $(filter-out -DDHDTCPACK_SUPPRESS,$(DHDCFLAGS))
+endif
+
 ifeq ($(CONFIG_ARCH_MSM),y)
   DHDCFLAGS := $(filter-out -DDHDTCPACK_SUPPRESS,$(DHDCFLAGS))
 endif
@@ -609,11 +620,11 @@ endif
   DHDCFLAGS += -DSUPPORT_CUSTOM_SET_CAC
 # To support Enable EVENT SDB Transition log.
   DHDCFLAGS += -DSUPPORT_EVT_SDB_LOG
-ifeq ($(filter y,$(CONFIG_ARCH_MSM8996) $(CONFIG_ARCH_MSM8998) $(CONFIG_SOC_EXYNOS8890) $(CONFIG_ARCH_TEGRA)),y)
+ifeq ($(filter y,$(CONFIG_ARCH_MSM8996) $(CONFIG_ARCH_MSM8998) $(CONFIG_SOC_EXYNOS8890) $(CONFIG_ARCH_TEGRA) $(CONFIG_ARCH_SDM845)),y)
  # Runtime PM
   DHDCFLAGS += -DDHD_PCIE_RUNTIMEPM -DMAX_IDLE_COUNT=11 -DCUSTOM_DHD_RUNTIME_MS=100
  # IRQ affinity setting for RX Load Balance
- # DHDCFLAGS += -DDHD_LB_IRQSET
+  DHDCFLAGS += -DDHD_LB_IRQSET
  # Disable SOFTAP_SEND_HANGEVT
   DHDCFLAGS := $(filter-out -DSOFTAP_SEND_HANGEVT,$(DHDCFLAGS))
  # CLM
@@ -622,7 +633,7 @@ ifeq ($(filter y,$(CONFIG_ARCH_MSM8996) $(CONFIG_ARCH_MSM8998) $(CONFIG_SOC_EXYN
 ifeq ($(CONFIG_SOC_EXYNOS8890),y)
   DHDCFLAGS += -DDYNAMIC_MUMIMO_CONTROL
 endif
-ifeq ($(CONFIG_ARCH_MSM8998),y)
+ifeq ($(filter y,$(CONFIG_ARCH_MSM8998) $(CONFIG_ARCH_SDM845)),y)
 # Use SMMU for IOMEM
   DHDCFLAGS += -DUSE_SMMU_ARCH_MSM
   DHDCFLAGS += -DSET_DMA_MASK_64BIT
@@ -909,13 +920,18 @@ endif
   DHDCFLAGS += -DCUSTOM_ROAM_TIME_THRESH_IN_SUSPEND=6000
   DHDCFLAGS += -DMAX_DTIM_ALLOWED_INTERVAL=925
 
-ifneq ($(PLATFORM_VERSION),)
+ifeq ($(filter y,$(CONFIG_BCM43454) $(CONFIG_BCM43455)), y)
+  #Support Qatar 5G band 36-64, 100-144, 149-165 channels
+  DHDCFLAGS += -DDHD_SUPPORT_QA_6
+endif
+
+#ifneq ($(PLATFORM_VERSION),)
 # Android O OS use below features
-ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
+#ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
 # Use single nvram file
   DHDCFLAGS += -DDHD_USE_SINGLE_NVRAM_FILE
-endif
-endif
+#endif
+#endif
 
 ifneq ($(filter y,$(CONFIG_BCM43455) $(CONFIG_BCM43456)),$(filter m,$(CONFIG_BCM43455) $(CONFIG_BCM43456)))
 # Enable Firmware Coredump
@@ -1088,13 +1104,13 @@ endif
   DHDCFLAGS :=$(filter-out -DSUPPORT_P2P_GO_PS,$(DHDCFLAGS))
 # Generate .softap.info
   DHDCFLAGS += -DGEN_SOFTAP_INFO_FILE
-ifneq ($(PLATFORM_VERSION),)
+#ifneq ($(PLATFORM_VERSION),)
 # Android O OS use below features
-ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
+#ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
 # Use single nvram file
   DHDCFLAGS += -DDHD_USE_SINGLE_NVRAM_FILE
-endif
-endif
+#endif
+#endif
 endif
 
 ifneq ($(CONFIG_BCM43012),)
@@ -1257,6 +1273,9 @@ endif
 ifeq ($(CONFIG_SOC_EXYNOS9110),y)
   DHDCFLAGS += -Wno-date-time
 endif
+ifeq ($(CONFIG_ARCH_SDM845),y)
+  DHDCFLAGS += -Wno-date-time
+endif
 
 # DTS Support
 ifeq ($(CONFIG_OF),y)
@@ -1325,12 +1344,16 @@ endif
 ifneq ($(CONFIG_SOC_EXYNOS9110),)
 DHDCFLAGS += -DDHD_OF_SUPPORT
 endif
+ifneq ($(CONFIG_ARCH_SDM845),)
+DHDCFLAGS += -DDHD_OF_SUPPORT
+DHDCFLAGS += -DBCMPCIE_OOB_HOST_WAKE
+endif
 endif #CONFIG_OF
 
 # DEBUG UART
-ifneq ($(CONFIG_WLAN_GRACE),)
-DHDCFLAGS += -DDHD_DEBUG_UART
-endif
+#ifneq ($(CONFIG_WLAN_GRACE),)
+#DHDCFLAGS += -DDHD_DEBUG_UART
+#endif
 
 #ifneq ($(CONFIG_SOC_EXYNOS8895),)
 #DHDCFLAGS += -DDHD_DEBUG_UART

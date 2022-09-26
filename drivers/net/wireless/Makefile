@@ -85,10 +85,14 @@ obj-$(CONFIG_MWIFIEX)	+= mwifiex/
 #obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359/dhd_custom_exynos.o
 #endif
 #endif
+
 DHDCFLAGS += -DANDROID_PLATFORM_VERSION=9
-obj-$(CONFIG_BCM4359)   += bcmdhd4359_100/
-obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359_100/dhd_custom_memprealloc.o
-obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359_100/dhd_custom_exynos.o
+#obj-$(CONFIG_BCM4359)   += bcmdhd4359_100/
+#obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359_100/dhd_custom_memprealloc.o
+#obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359_100/dhd_custom_exynos.o
+obj-$(CONFIG_BCM4359)   += bcmdhd4359/
+obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359/dhd_custom_memprealloc.o
+obj-$(CONFIG_SOC_EXYNOS8890) += bcmdhd4359/dhd_custom_exynos.o
 
 ifneq ($(CONFIG_BCM4358),)
 obj-$(CONFIG_BCM4358)   += bcmdhd4358/

@@ -8477,6 +8477,79 @@ exit:
 	return ret;
 }
 
+static int
+dhd_virt_open(struct net_device *net)
+{
+	int ifidx;
+	dhd_info_t *dhd = DHD_DEV_INFO(net);
+	struct net_device *primary_ndev;
+	struct bcm_cfg80211 *cfg;
+	u16 iftype;
+	struct wireless_dev *wdev = NULL;
+	ifidx = dhd_net2idx(dhd, net);
+	// not swlan0
+	if(ifidx != (DHD_MAX_IFS - 1))
+	{
+		return BCME_OK;
+	}
+	primary_ndev = dhd_linux_get_primary_netdev(&dhd->pub);
+	if(primary_ndev == NULL){
+		DHD_ERROR(("%s: primary_ndev is null", __FUNCTION__));
+		return -1;
+	}
+	// check if firmware is ready
+	if(dhd_open(primary_ndev)){
+		DHD_ERROR(("%s: dhd_open failed on primary_ndev", __FUNCTION__));
+		return -1;
+	}
+	cfg = wl_get_cfg(primary_ndev);
+	if(cfg == NULL){
+		DHD_ERROR(("%s: cfg is null", __FUNCTION__));
+		return -1;
+	}
+	if(!cfg->swlan0_opened){
+		iftype = net->ieee80211_ptr ? net->ieee80211_ptr->iftype : 0;
+		wdev = wl_cfg80211_add_virtual_iface(cfg->wdev->wiphy, net->name, iftype, NULL, NULL);
+		if(wdev != net->ieee80211_ptr){
+			DHD_ERROR(("%s: wl_cfg80211_add_virtual_iface() returned %x instead of %x", __FUNCTION__, wdev, net->ieee80211_ptr));
+			return -1;
+		}
+		cfg->swlan0_opened = TRUE;
+	}
+	return BCME_OK;
+}
+
+static int
+dhd_virt_stop(struct net_device *net){
+	int ifidx;
+	dhd_info_t *dhd = DHD_DEV_INFO(net);
+	struct net_device *primary_ndev;
+	struct bcm_cfg80211 *cfg;
+	ifidx = dhd_net2idx(dhd, net);
+	if(ifidx != (DHD_MAX_IFS - 1))
+	{
+		return BCME_OK;
+	}
+	primary_ndev = dhd_linux_get_primary_netdev(&dhd->pub);
+	if(primary_ndev == NULL){
+		DHD_ERROR(("%s: primary_ndev is null", __FUNCTION__));
+		return -1;
+	}
+	cfg = wl_get_cfg(primary_ndev);
+	if(cfg == NULL){
+		DHD_ERROR(("%s: cfg is null", __FUNCTION__));
+		return -1;
+	}
+	if(cfg->swlan0_opened){
+		if(wl_cfg80211_del_iface(cfg->wdev->wiphy, net->ieee80211_ptr)){
+			DHD_ERROR(("%s: wl_cfg80211_del_iface() failed", __FUNCTION__));
+			return -1;
+		}
+		cfg->swlan0_opened = FALSE;
+	}
+	return BCME_OK;
+}
+
 int dhd_do_driver_init(struct net_device *net)
 {
 	dhd_info_t *dhd = NULL;
@@ -8743,6 +8816,12 @@ dhd_remove_if(dhd_pub_t *dhdpub, int ifidx, bool need_rtnl_lock)
 	if_flow_lkup_t *if_flow_lkup = (if_flow_lkup_t *)dhdpub->if_flow_lkup;
 #endif /* PCIE_FULL_DONGLE */
 
+	/* do not remove swlan0 */
+	if(ifidx == (DHD_MAX_IFS - 1)){
+		DHD_TRACE(("Skip interface delete for swlan0\n"));
+		return BCME_OK;
+	}
+
 	ifp = dhdinfo->iflist[ifidx];
 	if (ifp != NULL) {
 #ifdef DHDTCPSYNC_FLOOD_BLK
@@ -8816,6 +8895,8 @@ static struct net_device_ops dhd_ops_pri = {
 };
 
 static struct net_device_ops dhd_ops_virt = {
+	.ndo_open = dhd_virt_open,
+	.ndo_stop = dhd_virt_stop,
 	.ndo_get_stats = dhd_get_stats,
 	.ndo_do_ioctl = dhd_ioctl_entry,
 	.ndo_start_xmit = dhd_start_xmit,
@@ -20012,3 +20093,67 @@ void dhd_reset_tcpsync_info_by_dev(struct net_device *dev)
 	}
 }
 #endif /* DHDTCPSYNC_FLOOD_BLK */
+
+void dhd_add_swlan0(dhd_pub_t *dhdpub){
+	/*
+	struct wl_if_event_info info;
+	bzero(&info, sizeof(info));
+	info.ifidx = DHD_MAX_IFS - 1;
+	info.bssidx = DHD_MAX_IFS - 1;
+	info.role = WLC_E_IF_ROLE_STA;
+	strncpy(info.name, "swlan0", IFNAMSIZ);
+	if (wl_cfg80211_post_ifcreate(dhdpub->info->iflist[0]->net,
+		&info, NULL, NULL, true) == NULL) {
+		DHD_ERROR(("%s(): ERROR.. wl_cfg80211_post_ifcreate() failed creating swlan0\n", __FUNCTION__));
+	}
+	*/
+	struct net_device *primary_ndev = dhd_linux_get_primary_netdev(dhdpub);
+	struct bcm_cfg80211 *cfg = wl_get_cfg(primary_ndev);
+	u16 iftype = NL80211_IFTYPE_STATION;
+	static const char *ifname = "swlan0";
+	struct net_device *ndev;
+	struct wireless_dev *wdev = NULL;
+	int ifidx = DHD_MAX_IFS - 1;
+	u8 mac_addr[ETH_ALEN];
+
+	if (!cfg) {
+		DHD_ERROR(("%s(): ERROR.. cfg null when creating swlan0\n", __FUNCTION__));
+		return;
+	}
+
+	cfg->swlan0_opened = FALSE;
+
+	/* Use primary mac with locally admin bit set */
+	memcpy(mac_addr, primary_ndev->dev_addr, ETH_ALEN);
+	mac_addr[0] |= 0x02;
+
+	ndev = wl_cfg80211_allocate_if(cfg, ifidx, ifname, mac_addr,
+		DHD_MAX_IFS - 1, NULL);
+	if (unlikely(!ndev)) {
+		DHD_ERROR(("%s(): ERROR.. wl_cfg80211_allocate_if cannot allocate swlan0\n", __FUNCTION__));
+		goto fail;
+	}
+	wdev = kzalloc(sizeof(*wdev), GFP_KERNEL);
+	if (unlikely(!wdev)) {
+		DHD_ERROR(("%s(): ERROR.. cannot allocate wdev for swlan0\n", __FUNCTION__));
+		goto fail;
+	}
+
+	wdev->wiphy = cfg->wdev->wiphy;
+	wdev->iftype = iftype;
+
+	ndev->ieee80211_ptr = wdev;
+	SET_NETDEV_DEV(ndev, wiphy_dev(wdev->wiphy));
+	wdev->netdev = ndev;
+
+	if (wl_cfg80211_register_if(cfg, ifidx,
+		ndev, TRUE) != BCME_OK) {
+		DHD_ERROR(("%s(): ERROR.. wl_cfg80211_register_if cannot register swlan0\n", __FUNCTION__));
+		goto fail;
+	}
+
+	return;
+fail:
+	wl_cfg80211_remove_if(cfg, ifidx, ndev, false);
+	return;
+}

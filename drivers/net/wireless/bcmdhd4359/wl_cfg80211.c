@@ -1723,7 +1723,7 @@ wl_cfg80211_add_monitor_if(const char *name)
 #endif /* WL_ENABLE_P2P_IF || WL_CFG80211_P2P_DEV_IF */
 }
 
-static bcm_struct_cfgdev *
+bcm_struct_cfgdev *
 wl_cfg80211_add_virtual_iface(struct wiphy *wiphy,
 #if defined(WL_CFG80211_P2P_DEV_IF)
 	const char *name,

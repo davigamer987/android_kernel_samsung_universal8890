@@ -949,6 +949,7 @@ struct bcm_cfg80211 {
 #ifdef WL_BAM
 	wl_bad_ap_mngr_t bad_ap_mngr;
 #endif  /* WL_BAM */
+	bool swlan0_opened;
 };
 
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
@@ -1857,3 +1858,18 @@ extern s32 wl_cfg80211_read_indoor_channels(struct net_device *ndev, void *buf, 
 extern bool wl_cfg80211_check_indoor_channels(struct net_device *ndev, int channel);
 #endif /* APSTA_RESTRICTED_CHANNEL */
 #endif /* _wl_cfg80211_h_ */
+
+bcm_struct_cfgdev *
+wl_cfg80211_add_virtual_iface(struct wiphy *wiphy,
+#if defined(WL_CFG80211_P2P_DEV_IF)
+    const char *name,
+#else
+    char *name,
+#endif /* WL_CFG80211_P2P_DEV_IF */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+    unsigned char name_assign_type,
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) */
+    enum nl80211_iftype type, u32 *flags,
+    struct vif_params *params);
+
+s32 wl_cfg80211_del_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev);

@@ -1415,6 +1415,9 @@ int dhdpcie_init(struct pci_dev *pdev)
 			break;
 		}
 
+		/* insert swlan0 now */
+		dhd_add_swlan0(bus->dhd);
+
 		dhdpcie_init_succeeded = TRUE;
 
 		DHD_TRACE(("%s:Exit - SUCCESS \n", __FUNCTION__));

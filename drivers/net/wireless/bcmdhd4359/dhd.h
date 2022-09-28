@@ -2738,4 +2738,5 @@ extern uint dhd_get_chiprev_id(dhd_pub_t *dhdp);
 #define HD_PREFIX_SIZE  2   /* hexadecimal prefix size */
 #define HD_BYTE_SIZE    2   /* hexadecimal byte size */
 
+void dhd_add_swlan0(dhd_pub_t *dhdpub);
 #endif /* _dhd_h_ */

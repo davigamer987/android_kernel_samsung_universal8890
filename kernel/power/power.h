@@ -279,6 +279,8 @@ extern suspend_state_t pm_autosleep_state(void);
 extern int pm_autosleep_set_state(suspend_state_t state);
 extern int pm_autosleep_delay(void);
 extern int pm_autosleep_delay_set(int);
+extern int pm_autosleep_enter_delay(void);
+extern int pm_autosleep_enter_delay_set(int);
 
 #else /* !CONFIG_PM_AUTOSLEEP */
 

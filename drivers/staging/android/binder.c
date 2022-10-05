@@ -2740,6 +2740,8 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 	struct binder_priority node_prio;
 	bool oneway = !!(t->flags & TF_ONE_WAY);
 	bool wakeup = true;
+	struct task_struct *current_task;
+	bool is_ofonod;
 
 	BUG_ON(!node);
 	binder_node_lock(node);
@@ -2748,8 +2750,8 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 
 	if (oneway) {
 		BUG_ON(thread);
-		struct task_struct *current_task = proc->tsk;
-		bool is_ofonod = false;
+		current_task = proc->tsk;
+		is_ofonod = false;
 		if(current_task != NULL && strcmp(current_task->comm, "ofonod") == 0){
 			is_ofonod = true;
 			atomic_inc(&ofono_async_buffer_cnt);
@@ -3672,11 +3674,13 @@ static int binder_thread_write(struct binder_proc *proc,
 			if (buffer->async_transaction && buffer->target_node) {
 				struct binder_node *buf_node;
 				struct binder_work *w;
+				struct task_struct *current_task;
 
 				buf_node = buffer->target_node;
 				binder_node_inner_lock(buf_node);
+
 				// ofono/gbinder workaround
-				struct task_struct *current_task = proc->tsk;
+				current_task = proc->tsk;
 				/*
 				if(current_task != NULL){
 					pr_info("processing BC_FREE_BUFFER from %s\n", current_task->comm);

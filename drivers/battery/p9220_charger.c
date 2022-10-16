@@ -62,7 +62,10 @@ static enum power_supply_property sec_charger_props[] = {
 	POWER_SUPPLY_PROP_ENERGY_NOW,
 	POWER_SUPPLY_PROP_ENERGY_AVG,
 	POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION,
+	/*
+	 * see get prop for why this is disabled
 	POWER_SUPPLY_PROP_SCOPE,
+	*/
 };
 
 int p9220_otp_update = 0;
@@ -1454,9 +1457,13 @@ static int p9220_chg_get_property(struct power_supply *psy,
 		} else
 			val->intval = 0;
 		break;
+	/*
+	 * this breaks udev sometimes, seems to depend on previous queries
+	 * not sure what is the expected query sequence on android
 	case POWER_SUPPLY_PROP_SCOPE:
 		val->intval = p9220_get_adc(charger, val->intval);
 		break;
+	*/
 	default:
 		return -EINVAL;
 	}
@@ -1645,8 +1652,11 @@ static int p9220_chg_set_property(struct power_supply *psy,
 			iout = p9220_get_adc(charger, P9220_ADC_RX_IOUT);
 			pr_info("%s RX_VOUT = %dmV, RX_VRECT = %dmV, RX_IOUT = %dmA\n", __func__, vout, vrect, iout);
 			break;
+		/*
+		 * see get prop for why this is disabled
 		case POWER_SUPPLY_PROP_SCOPE:
 			return -EINVAL;
+		*/
 		default:
 			return -EINVAL;
 	}

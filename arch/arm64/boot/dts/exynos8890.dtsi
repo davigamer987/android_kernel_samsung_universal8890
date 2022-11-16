@@ -123,29 +123,86 @@
 			compatible = "android,firmware";
 			fstab {
 				compatible = "android,fstab";
-				vendor {
-					compatible = "android,vendor";
-					dev = "/dev/block/platform/155a0000.ufs/by-name/CACHE";
+				00_system_sfs {
+					compatible = "android,system";
+					dev = "/dev/block/platform/155a0000.ufs/by-name/SYSTEM";
 					type = "squashfs";
-					mnt_flags = "ro,errors=panic,noload";
-					fsmgr_flags = "wait";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
 					status = "ok";
+					mnt_point = "/system";
 				};
-				system {
+				01_system_ext4 {
 					compatible = "android,system";
 					dev = "/dev/block/platform/155a0000.ufs/by-name/SYSTEM";
 					type = "ext4";
-					mnt_flags = "ro,errors=panic,noload";
-					fsmgr_flags = "wait";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
 					status = "ok";
+					mnt_point = "/system";
 				};
-				efs {
+				02_system_sd_sfs {
+					compatible = "android,system";
+					dev = "/dev/block/platform/15740000.dwmmc2/by-name/SYSTEM_SD";
+					type = "squashfs";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/system";
+				};
+				03_system_sd_ext4 {
+					compatible = "android,system";
+					dev = "/dev/block/platform/15740000.dwmmc2/by-name/SYSTEM_SD";
+					type = "ext4";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/system";
+				};
+				04_vendor_sfs {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/155a0000.ufs/by-name/CACHE";
+					type = "squashfs";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/vendor";
+				};
+				05_vendor_ext4 {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/155a0000.ufs/by-name/CACHE";
+					type = "ext4";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/vendor";
+				};
+				06_vendor_sd_sfs {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/15740000.dwmmc2/by-name/VENDOR_SD";
+					type = "squashfs";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/vendor";
+				};
+				07_vendor_sd_ext4 {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/15740000.dwmmc2/by-name/VENDOR_SD";
+					type = "ext4";
+					mnt_flags = "ro,errors=continue";
+					fsmgr_flags = "nofail";
+					status = "ok";
+					mnt_point = "/vendor";
+				};
+				08_efs {
 					compatible = "android,efs";
 					dev = "/dev/block/platform/155a0000.ufs/by-name/EFS";
 					type = "ext4";
 					mnt_flags = "noatime,nosuid,nodev,noauto_da_alloc,discard,journal_async_commit,data=ordered,no_sehash_xattr,errors=panic";
-					fsmgr_flags = "wait,check";
+					fsmgr_flags = "check";
 					status = "ok";
+					mnt_point = "/efs";
 				}; 
 			};
 		};

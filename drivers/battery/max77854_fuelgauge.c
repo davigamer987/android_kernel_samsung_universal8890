@@ -20,7 +20,7 @@
 #include <linux/seq_file.h>
 
 static enum power_supply_property max77854_fuelgauge_props[] = {
-	POWER_SUPPLY_PROP_STATUS,
+	/*POWER_SUPPLY_PROP_STATUS,*/
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
@@ -1705,8 +1705,10 @@ static int max77854_fg_set_property(struct power_supply *psy,
 	u8 data[2] = {0, 0};
 
 	switch (psp) {
+	/*
 	case POWER_SUPPLY_PROP_STATUS:
 		break;
+	*/
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		if (fuelgauge->pdata->capacity_calculation_type &
 			SEC_FUELGAUGE_CAPACITY_TYPE_DYNAMIC_SCALE)

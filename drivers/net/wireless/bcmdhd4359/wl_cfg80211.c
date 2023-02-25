@@ -10137,6 +10137,161 @@ wl_cfg80211_set_scb_timings(
 	return 0;
 }
 
+#if 1
+// the firmware cannot send beacon/probresp correctly in WPA_PSK + WPA_PSK_SHA256 mode
+// this effectively forces optinal mode to be disabled mode instead, and WPA_PSK_SHA256 is not offered unless pmf is on required mode
+static void ut_wpa_psk_sha256_pmf_workaround(struct cfg80211_ap_settings *info){
+	bool remove_sha256_from_crypto = FALSE;
+	// parse and maybe re-write beacon
+	{
+		bcm_tlv_t *cur_header = (bcm_tlv_t *)info->beacon.tail;
+		u8 copy_buffer[info->beacon.tail_len];
+		size_t copy_len = 0;
+		bool overwrite = FALSE;
+
+		while ((info->beacon.tail_len - (((size_t)cur_header) - ((size_t)info->beacon.tail))) >= TLV_HDR_LEN){
+			if(cur_header->len + TLV_HDR_LEN + (size_t)cur_header > (size_t)(info->beacon.tail) + info->beacon.tail_len){
+				WL_ERR(("beacon has broken length\n"));
+				break;
+			}
+			if(cur_header->id == DOT11_MNG_RSN_ID){
+				wpa_suite_mcast_t *mcast = (wpa_suite_mcast_t *)&cur_header->data[WPA2_VERSION_LEN];
+				wpa_suite_ucast_t *ucast;
+				wpa_suite_auth_key_mgmt_t *mgmt;
+				u8 *rsn_cap;
+				int mgmt_cnt;
+				size_t segment_end = (size_t)cur_header + cur_header->len + TLV_HDR_LEN;
+				int wpa_psk_sha256_idx = -1;
+				int i;
+
+				if((size_t)mcast >= segment_end){
+					WL_ERR(("mcast is outside of wpa2ie\n"));
+					break;
+				}
+
+				ucast = (wpa_suite_ucast_t *)&mcast[1];
+				if((size_t)ucast >= segment_end){
+					WL_ERR(("ucast is outside of wpa2ie\n"));
+					break;
+				}
+
+				mgmt = (wpa_suite_auth_key_mgmt_t *)&ucast->list[ltoh16_ua(&ucast->count)];
+				if((size_t)mgmt >= segment_end){
+					WL_ERR(("mgmt is outside of wpa2ie\n"));
+					break;
+				}
+
+				mgmt_cnt = ltoh16_ua(&mgmt->count);
+				rsn_cap = (u8 *)&(mgmt->list[mgmt_cnt]);
+				if((size_t)&(rsn_cap[1]) >= segment_end){
+					WL_ERR(("rsn_cap is outside of wpa2ie\n"));
+					break;
+				}
+
+				if((cur_header->len + TLV_HDR_LEN) - ((size_t)rsn_cap - (size_t)cur_header) != 2){
+					WL_ERR(("RSN ie is longer than expected\n"));
+					break;
+				}
+
+				if(rsn_cap[0] & RSN_CAP_MFPR){
+					WL_ERR(("MFP is required, nothing to do here\n"));
+					break;
+				}
+
+				for(i = 0;i < mgmt_cnt;i++){
+					if(mgmt->list[i].type == RSN_AKM_MFP_PSK){
+						if(wpa_psk_sha256_idx != -1){
+							WL_ERR(("RSN_AKM_MFP_PSK was defined more than once, giveup\n"));
+							wpa_psk_sha256_idx = -2;
+							overwrite = FALSE;
+							remove_sha256_from_crypto = FALSE;
+							break;
+						}
+						wpa_psk_sha256_idx = i;
+						overwrite = TRUE;
+						remove_sha256_from_crypto = TRUE;
+					}
+				}
+
+				if(wpa_psk_sha256_idx == -2){
+					break;
+				}
+
+				if(wpa_psk_sha256_idx == -1){
+					WL_ERR(("wpa_psk_sha256 is not enabled, nothing to do here\n"));
+					break;
+				}else{
+					// rewrite beacon to exclude WPA_PSK_SHA256
+					u8 *segment_copy_buffer = copy_buffer + copy_len;
+					bcm_tlv_t *segment_copy = (bcm_tlv_t *)segment_copy_buffer;
+					int mgmt_copy_cnt = mgmt_cnt - 1;
+					size_t mgmt_copy_len = WPA_IE_SUITE_COUNT_LEN + WPA_SUITE_LEN * mgmt_copy_cnt;
+					wpa_suite_auth_key_mgmt_t *mgmt_copy;
+					u8 *rsn_cap_copy;
+					int i;
+
+					memcpy(segment_copy_buffer, cur_header, (size_t)mgmt - (size_t)cur_header);
+					segment_copy->len = cur_header->len - WPA_SUITE_LEN;
+					copy_len += (size_t)mgmt - (size_t)cur_header;
+
+					mgmt_copy = (wpa_suite_auth_key_mgmt_t *)(copy_buffer + copy_len);
+					htol16_ua_store(mgmt_copy_cnt, &(mgmt_copy->count));
+					for(i = 0;i < mgmt_cnt;i++){
+						if(i < wpa_psk_sha256_idx){
+							memcpy(&(mgmt_copy->list[i]), &(mgmt->list[i]), WPA_SUITE_LEN);
+						}else if(i > wpa_psk_sha256_idx){
+							memcpy(&(mgmt_copy->list[i - 1]), &(mgmt->list[i]), WPA_SUITE_LEN);
+						}
+					}
+					copy_len += mgmt_copy_len;
+					rsn_cap_copy = copy_buffer + copy_len;
+
+					// clear optional MFP flag
+					rsn_cap_copy[0] = rsn_cap[0] & (~RSN_CAP_MFPC);
+					rsn_cap_copy[1] = rsn_cap[1];
+					copy_len += 2;
+				}
+			}else{
+				memcpy(copy_buffer + copy_len, cur_header, TLV_HDR_LEN + cur_header->len);
+				copy_len += TLV_HDR_LEN + cur_header->len;
+			}
+
+			cur_header = (bcm_tlv_t *) (((u8 *)cur_header) + TLV_HDR_LEN + cur_header->len);
+		}
+
+		if(overwrite){
+			WL_ERR(("rewriting beacon to exclude WPA_PSK_SHA256\n"));
+			memcpy((u8*)info->beacon.tail, copy_buffer, copy_len);
+			info->beacon.tail_len = copy_len;
+		}
+	}
+
+	// remove from crypto
+	// seems unused in for ap mode but might as well
+	if(remove_sha256_from_crypto){
+		int i,j;
+		i = j = 0;
+		WL_ERR(("info->crypto.n_akm_suites is %d\n", info->crypto.n_akm_suites));
+		for(;i < info->crypto.n_akm_suites;i++){
+			if(info->crypto.akm_suites[i] == WL_AKM_SUITE_SHA256_PSK){
+				continue;
+			}
+			if(i != j){
+				info->crypto.akm_suites[j] = info->crypto.akm_suites[i];
+				j++;
+			}
+		}
+		if(i == j){
+			WL_ERR(("info->crypto.akm_suits does not contain WL_AKM_SUITE_SHA256_PSK\n"));
+		}else{
+			WL_ERR(("removed WL_AKM_SUITE_SHA256_PSK from info->crypto.akm_suits\n"));
+			info->crypto.n_akm_suites = j;
+		}
+	}
+}
+
+#endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)) || defined(WL_COMPAT_WIRELESS)
 static s32
 wl_cfg80211_start_ap(
@@ -10152,6 +10307,10 @@ wl_cfg80211_start_ap(
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 
 	WL_DBG(("Enter \n"));
+
+#if 1
+	ut_wpa_psk_sha256_pmf_workaround(info);
+#endif
 
 #if defined(SUPPORT_RANDOM_MAC_SCAN)
 	wl_cfg80211_random_mac_disable(dev);

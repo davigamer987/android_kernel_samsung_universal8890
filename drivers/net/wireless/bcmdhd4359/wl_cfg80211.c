@@ -3260,8 +3260,10 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	 * scan. Hence return scan success.
 	 */
 	if (request && (scan_req_iftype(request) == NL80211_IFTYPE_AP)) {
-		WL_INFORM(("Scan Command on SoftAP Interface. Ignoring...\n"));
-		return 0;
+		WL_ERR(("Scan Command on SoftAP Interface. Ignoring...\n"));
+		// XXX return 0 here gets scan request stuck on nl80211 since a wl_notify_scan_done is not queued
+		// return 0;
+		return -EBUSY;
 	}
 
 	ndev = ndev_to_wlc_ndev(ndev, cfg);

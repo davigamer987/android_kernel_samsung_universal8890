@@ -34,7 +34,6 @@
 #if defined(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic_notifier.h>
 #endif /* CONFIG_MUIC_NOTIFIER */
-
 #if defined (CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
@@ -523,6 +522,12 @@ int vps_find_attached_dev(muic_data_t *pmuic, muic_attached_dev_t *pdev, int *pi
 				MUIC_DEV_NAME, __func__, mdev, pvps->cfg->name);
 
 		new_dev = chgdet_dev ? chgdet_dev : mdev;
+
+		// audiodock hack
+		if(pmuic->otg_is_audiodock && new_dev == MDEV(OTG)){
+			pr_info("%s:otg is forced to be audiodock instead.\n", __func__);
+			mdev = new_dev = MDEV(AUDIODOCK);
+		}
 
 		break;
 	}

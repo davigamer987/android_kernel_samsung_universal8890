@@ -355,6 +355,7 @@ static int rx_multi_pdp(struct sk_buff *skb)
 	return len;
 }
 
+static atomic_t not_opened_queued = {.counter = 0};
 static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 {
 	struct io_device *iod;
@@ -383,10 +384,20 @@ static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 	if (iod->id == CP2AP_LOOPBACK_CHANNEL)
 		return rx_loopback(skb);
 
+
 	if (atomic_read(&iod->opened) <= 0) {
-		mif_err_limited("%s: ERR! %s is not opened\n",
-				ld->name, iod->name);
-		return -ENODEV;
+		unsigned int log_value = atomic_inc_return(&not_opened_queued);
+		mif_err_limited("%s: ERR! %s is not opened, %u packets queued this way\n",
+				ld->name, iod->name, log_value);
+		// XXX just queue them for now
+		// Not sure how in ubuntu touch, after everything has called
+		// misc_release during a shutdown, further freeing skbs from
+		// modem could cause a rcu_sched hang on..  systemd-cgroup?
+		// The only guess for now is how systemd-cgroup manages
+		// shmem in slices, and that somehow linked the two together
+		//return -ENODEV;
+	}else{
+		atomic_set(&not_opened_queued, 0);
 	}
 
 	if (sipc5_fmt_ch(ch))

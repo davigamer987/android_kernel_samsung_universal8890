@@ -352,6 +352,8 @@ static int etspi_register_wake_up_signal(struct etspi_data *etspi,
 		pr_err("%s Failed copy from user.\n", __func__);
 		return -EFAULT;
 	} else {
+		struct pid *process_pid = NULL;
+		pid_t _init_pid = atomic_read(&init_pid);
 		etspi->user_pid = usr_signal.user_pid;
 		etspi->signal_id = usr_signal.signal_id;
                 pr_info("%s, user_pid: %d, signal_id : %d\n"
@@ -359,19 +361,35 @@ static int etspi_register_wake_up_signal(struct etspi_data *etspi,
 		rcu_read_lock();
 		/* find the task_struct associated with userpid */
 		etspi->t = NULL;
-		if (atomic_read(&init_pid) == 0){
-			etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns),
-				     PIDTYPE_PID);
+
+		// halium: attempt to resolve pid namespace from current
+		if(_init_pid == 0){
+			process_pid = find_pid_ns(current->pid, &init_pid_ns);
 		}else{
-			struct pid *init_pid_s = find_pid_ns(atomic_read(&init_pid), &init_pid_ns);
-			if (init_pid_s != NULL){
-				struct pid_namespace *ns = ns_of_pid(init_pid_s);
-				if(ns != NULL){
-					etspi->t = pid_task(find_pid_ns(etspi->user_pid, ns),
-					         PIDTYPE_PID);
-				}
-			}
+			process_pid = find_pid_ns(_init_pid, &init_pid_ns);
 		}
+		if(process_pid != NULL){
+			struct pid_namespace *process_ns = ns_of_pid(process_pid);
+			if(process_ns != NULL){
+				struct pid *target_pid = find_pid_ns(etspi->user_pid, process_ns);
+				if(target_pid != NULL){
+					etspi->t = pid_task(target_pid, PIDTYPE_PID);
+					if(etspi->t == NULL){
+						pr_err("%s Failed fetching task from current pid namespace.\n", __func__);
+					}
+				}else{
+					pr_err("%s Failed fetching target pid from current pid namespace.\n", __func__);
+					etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns), PIDTYPE_PID);
+				}
+			}else{
+				pr_err("%s Failed fetching current pid namespace.\n", __func__);
+				etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns), PIDTYPE_PID);
+			}
+		}else{
+			pr_err("%s Failed fetching current pid.\n", __func__);
+			etspi->t = pid_task(find_pid_ns(etspi->user_pid, &init_pid_ns), PIDTYPE_PID);
+		}
+
 		if (etspi->t == NULL) {
 			pr_debug("%s No such pid\n", __func__);
 			rcu_read_unlock();

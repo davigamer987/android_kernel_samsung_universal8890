@@ -503,29 +503,6 @@ static ssize_t autosleep_delay_store(struct kobject *kobj,
 }
 
 power_attr(autosleep_delay);
-
-static ssize_t autosleep_enter_delay_show(struct kobject *kobj,
-			      struct kobj_attribute *attr,
-			      char *buf)
-{
-	return sprintf(buf, "%d\n", pm_autosleep_enter_delay());
-}
-
-static ssize_t autosleep_enter_delay_store(struct kobject *kobj,
-			       struct kobj_attribute *attr,
-			       const char *buf, size_t n)
-{
-	int err;
-	int value;
-	err = kstrtoint(buf, 10, &value);
-	if(err){
-		return err;
-	}
-	err = pm_autosleep_enter_delay_set(value);
-	return err ? err : n;
-}
-
-power_attr(autosleep_enter_delay);
 #endif /* CONFIG_PM_AUTOSLEEP */
 
 #ifdef CONFIG_PM_WAKELOCKS
@@ -732,7 +709,6 @@ static struct attribute * g[] = {
 #ifdef CONFIG_PM_AUTOSLEEP
 	&autosleep_attr.attr,
 	&autosleep_delay_attr.attr,
-	&autosleep_enter_delay_attr.attr,
 #endif
 #ifdef CONFIG_PM_WAKELOCKS
 	&wake_lock_attr.attr,

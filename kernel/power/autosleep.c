@@ -23,20 +23,13 @@ static struct workqueue_struct *autosleep_wq;
 static DEFINE_MUTEX(autosleep_lock);
 static struct wakeup_source *autosleep_ws;
 
-#define AUTOSLEEP_ENTER_DELAY_DEFAULT 5
 #define AUTOSLEEP_DELAY_DEFAULT 2
 #define AUTOSLEEP_DELAY_MAX 30
-#define AUTOSLEEP_DELAY_MIN 1
+#define AUTOSLEEP_DELAY_MIN AUTOSLEEP_DELAY_DEFAULT
 static int autosleep_delay = AUTOSLEEP_DELAY_DEFAULT;
-static int autosleep_enter_delay = AUTOSLEEP_ENTER_DELAY_DEFAULT;
-static bool autosleep_enter = true;
 
 int pm_autosleep_delay(void){
 	return autosleep_delay;
-}
-
-int pm_autosleep_enter_delay(void){
-	return autosleep_enter_delay;
 }
 
 static bool is_valid_autosleep_delay(int value){
@@ -54,14 +47,6 @@ int pm_autosleep_delay_set(int delay){
 	return 0;
 }
 
-int pm_autosleep_enter_delay_set(int delay){
-	if(!is_valid_autosleep_delay(delay)){
-		return -EINVAL;
-	}
-	autosleep_enter_delay = delay;
-	return 0;
-}
-
 static int get_autosleep_delay(void){
 	// in case of race condition
 	int autosleep_delay_copy = autosleep_delay;
@@ -71,27 +56,9 @@ static int get_autosleep_delay(void){
 	return HZ * autosleep_delay_copy;
 }
 
-static int get_autosleep_enter_delay(void){
-	// in case of race condition
-	int autosleep_delay_copy = autosleep_enter_delay;
-	if(!is_valid_autosleep_delay(autosleep_delay_copy)){
-		return HZ * AUTOSLEEP_ENTER_DELAY_DEFAULT;
-	}
-	return HZ * autosleep_delay_copy;
-}
-
 static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
-
-	// XXX reduce the aggressiveness of autosleep
-	// autosleep seems to sleep a lot more aggressively than android power management
-	// a few hangups were observed on ut/repowerd:
-	// exynos-ufs resume would semi-frequently timeout, then reset(re-probe) would cause a hang
-	// it seems that other hangs are also possible post resume, but not as frequent as exynos-ufs combined and are still under investigation
-	if(autosleep_enter){
-		schedule_timeout_uninterruptible(get_autosleep_enter_delay());
-	}
 
 	if (!pm_get_wakeup_count(&initial_count, true))
 		goto out;
@@ -106,10 +73,8 @@ static void try_to_suspend(struct work_struct *work)
 
 	if (autosleep_state == PM_SUSPEND_ON) {
 		mutex_unlock(&autosleep_lock);
-		autosleep_enter = true;
 		return;
 	}
-
 	if (autosleep_state >= PM_SUSPEND_MAX)
 		hibernate();
 	else
@@ -117,8 +82,11 @@ static void try_to_suspend(struct work_struct *work)
 
 	mutex_unlock(&autosleep_lock);
 
-	// XXX see above regarding suspend hangups
-	autosleep_enter = false;
+	// XXX reduce the aggressiveness of autosleep
+	// autosleep seems to sleep a lot more aggressively than android power management
+	// a few hangups were observed on ut/repowerd:
+	// exynos-ufs resume would semi-frequently timeout, then reset(re-probe) would cause a hang
+	// it seems that other hangs are also possible post resume, but not as frequent as exynos-ufs combined and are still under investigation
 	schedule_timeout_uninterruptible(get_autosleep_delay());
 
 	if (!pm_get_wakeup_count(&final_count, false))

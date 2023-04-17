@@ -101,8 +101,8 @@ static int bcm4359_bt_rfkill_set_power(void *data, bool blocked)
 		msleep(100);
 
 	} else {
-		pr_info("[BT] Bluetooth Power Off is disabled to not confuse bluez.\n");
-		/*
+		pr_info("[BT] Bluetooth Power Off.\n");
+
 #ifdef BT_LPM_ENABLE
 		if (gpio_get_value(bt_gpio.bt_en) && irq_set_irq_wake(bt_gpio.irq, 0)) {
 			pr_err("[BT] Release_irq_wake failed.\n");
@@ -112,7 +112,6 @@ static int bcm4359_bt_rfkill_set_power(void *data, bool blocked)
 
 		exynos_update_ip_idle_status(idle_ip_index, STATUS_IDLE);
 		gpio_set_value(bt_gpio.bt_en, 0);
-		*/
 	}
 	return 0;
 }

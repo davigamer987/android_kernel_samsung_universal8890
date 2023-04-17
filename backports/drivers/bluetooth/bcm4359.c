@@ -102,7 +102,6 @@ static int bcm4359_bt_rfkill_set_power(void *data, bool blocked)
 
 	} else {
 		pr_info("[BT] Bluetooth Power Off is disabled to not confuse bluez.\n");
-		bcm4359_bt_rfkill_set_power(data, false);
 		/*
 #ifdef BT_LPM_ENABLE
 		if (gpio_get_value(bt_gpio.bt_en) && irq_set_irq_wake(bt_gpio.irq, 0)) {
